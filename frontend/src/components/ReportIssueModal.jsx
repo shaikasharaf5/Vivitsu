@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import axios from '../utils/axios';
 import { toast } from 'react-toastify';
-import { X, MapPin, Upload, AlertCircle } from 'lucide-react';
+import { 
+  X, MapPin, Upload, AlertCircle, Camera, Navigation, Image as ImageIcon,
+  FileText, AlertTriangle, CheckCircle, Loader
+} from 'lucide-react';
 import ImageDuplicateWarning from './ImageDuplicateWarning';
 
 const ReportIssueModal = ({ onClose, onSuccess }) => {
@@ -87,6 +90,19 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
     }
   };
 
+  const getCategoryIcon = (category) => {
+    const icons = {
+      ROADS: '🛣️',
+      UTILITIES: '⚡',
+      PARKS: '🌳',
+      TRAFFIC: '🚦',
+      SANITATION: '🗑️',
+      HEALTH: '🏥',
+      OTHER: '📋'
+    };
+    return icons[category] || '📋';
+  };
+
   // Image duplicate warning dialog
   if (showImageWarning) {
     return (
@@ -106,40 +122,61 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
   // Text duplicate warning dialog
   if (duplicates.length > 0) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-          <div className="flex items-center mb-4">
-            <AlertCircle className="h-6 w-6 text-yellow-600 mr-2" />
-            <h2 className="text-xl font-bold">Similar Issue Found</h2>
-          </div>
-          
-          <p className="text-gray-700 mb-4">
-            We found a similar issue that might be the same problem:
-          </p>
-
-          {duplicates.map((dup) => (
-            <div key={dup.issue._id} className="bg-gray-50 p-4 rounded mb-4">
-              <h3 className="font-semibold">{dup.issue.title}</h3>
-              <p className="text-sm text-gray-600 mt-1">{dup.issue.description}</p>
-              <p className="text-xs text-gray-500 mt-2">
-                {dup.confidence}% match • {dup.issue.upvotes} upvotes
-              </p>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Similar Issue Found</h2>
+                <p className="text-amber-100 text-sm">This might be a duplicate report</p>
+              </div>
             </div>
-          ))}
+          </div>
 
-          <div className="flex space-x-3">
-            <button
-              onClick={() => window.location.href = `/issue/${duplicates[0].issue._id}`}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
-            >
-              View Existing Issue
-            </button>
-            <button
-              onClick={reportAnyway}
-              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
-            >
-              Report Anyway
-            </button>
+          <div className="p-6">
+            <p className="text-gray-700 mb-4">
+              We found a similar issue that might be the same problem. Consider upvoting the existing issue instead:
+            </p>
+
+            {duplicates.map((dup) => (
+              <div key={dup.issue._id} className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-bold text-gray-900">{dup.issue.title}</h3>
+                  <span className="px-2 py-1 bg-amber-200 text-amber-900 rounded-full text-xs font-bold">
+                    {dup.confidence}% Match
+                  </span>
+                </div>
+                <p className="text-sm text-gray-700 mb-3 line-clamp-2">{dup.issue.description}</p>
+                <div className="flex items-center gap-4 text-xs text-gray-600">
+                  <span className="flex items-center gap-1">
+                    ❤️ {dup.issue.upvotes} upvotes
+                  </span>
+                  <span>•</span>
+                  <span>{dup.issue.category}</span>
+                  <span>•</span>
+                  <span>{dup.issue.status?.replace('_', ' ')}</span>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => window.location.href = `/issue/${duplicates[0].issue._id}`}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg"
+              >
+                View Existing Issue
+              </button>
+              <button
+                onClick={reportAnyway}
+                className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all"
+              >
+                Report Anyway
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -148,131 +185,224 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
 
   // Main report form
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 my-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Report an Issue</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            <X className="h-6 w-6" />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 flex items-center justify-between rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-white/20 rounded-lg">
+              <AlertCircle className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Report an Issue</h2>
+              <p className="text-blue-100 text-sm">Help improve your community</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <X className="h-6 w-6 text-white" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Title *</label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., Pothole on Main Street"
-              required
-            />
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Category Selection */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Select Category *
+            </label>
+            <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFormData({...formData, category: cat})}
+                  className={`p-4 border-2 rounded-xl transition-all ${
+                    formData.category === cat
+                      ? 'border-blue-600 bg-blue-50 shadow-md'
+                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-3xl mb-2">{getCategoryIcon(cat)}</div>
+                  <div className="text-xs font-semibold text-gray-700">{cat}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Description *</label>
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Issue Title *
+            </label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                value={formData.title}
+                onChange={(e) => setFormData({...formData, title: e.target.value})}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="e.g., Large pothole on Main Street near intersection"
+                required
+              />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Description *
+            </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({...formData, description: e.target.value})}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
               rows="4"
-              placeholder="Describe the issue in detail..."
+              placeholder="Provide detailed information about the issue..."
               required
             />
+            <p className="text-xs text-gray-500 mt-1">
+              {formData.description.length} characters
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2">Category *</label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({...formData, category: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {categories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-gray-700 font-semibold mb-2">Priority</label>
-              <select
-                value={formData.priority}
-                onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
+          {/* Priority */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Priority Level
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map(priority => (
+                <button
+                  key={priority}
+                  type="button"
+                  onClick={() => setFormData({...formData, priority})}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                    formData.priority === priority
+                      ? priority === 'CRITICAL' ? 'bg-red-600 text-white'
+                        : priority === 'HIGH' ? 'bg-orange-600 text-white'
+                        : priority === 'MEDIUM' ? 'bg-yellow-500 text-white'
+                        : 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {priority}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-gray-700 font-semibold mb-2">Location *</label>
-            <div className="flex space-x-2">
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({...formData, address: e.target.value})}
-                className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter address"
-              />
+          {/* Location */}
+          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-semibold text-gray-700">Location *</label>
               <button
                 type="button"
                 onClick={handleLocationClick}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
               >
-                <MapPin className="h-4 w-4 mr-2" />
-                Use My Location
+                <Navigation className="h-4 w-4" />
+                Use Current Location
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Lat: {formData.latitude.toFixed(4)}, Lng: {formData.longitude.toFixed(4)}
-            </p>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-gray-700 font-semibold mb-2">Photos (Optional)</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={(e) => setPhotos(Array.from(e.target.files))}
-                className="hidden"
-                id="photo-upload"
-              />
-              <label htmlFor="photo-upload" className="cursor-pointer">
-                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Click to upload photos</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {photos.length > 0 ? `${photos.length} file(s) selected` : 'Images will be checked for duplicates'}
-                </p>
-              </label>
+            <input
+              type="text"
+              value={formData.address}
+              onChange={(e) => setFormData({...formData, address: e.target.value})}
+              className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+              placeholder="Enter address or use current location"
+            />
+            <div className="flex items-center gap-4 text-xs text-gray-600">
+              <div className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                <span>Lat: {formData.latitude.toFixed(4)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                <span>Lng: {formData.longitude.toFixed(4)}</span>
+              </div>
             </div>
-            <p className="text-xs text-gray-500 mt-2">
-              ⚠️ Your images will be scanned for duplicates using perceptual hashing.
-            </p>
           </div>
 
-          <div className="flex space-x-3">
+          {/* Photo Upload */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">
+              Photos (up to 5)
+            </label>
+            <div className="grid grid-cols-5 gap-3">
+              {[...Array(5)].map((_, index) => (
+                <div key={index} className="relative aspect-square">
+                  {photos[index] ? (
+                    <div className="relative w-full h-full rounded-lg overflow-hidden border-2 border-blue-500 group">
+                      <img
+                        src={URL.createObjectURL(photos[index])}
+                        alt={`Photo ${index + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPhotos(photos.filter((_, i) => i !== index))}
+                        className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs text-center py-1">
+                        Photo {index + 1}
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files[0]) {
+                            setPhotos([...photos, e.target.files[0]]);
+                          }
+                        }}
+                      />
+                      <Camera className="h-6 w-6 text-gray-400 mb-1" />
+                      <span className="text-xs text-gray-500">Add</span>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-start gap-2 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800">
+                Images will be scanned for duplicates using AI-powered perceptual hashing
+              </p>
+            </div>
+          </div>
+
+          {/* Submit Buttons */}
+          <div className="flex gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
+              className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
             >
-              {loading ? 'Checking Images...' : 'Report Issue'}
+              {loading ? (
+                <>
+                  <Loader className="h-5 w-5 animate-spin" />
+                  Analyzing Images...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="h-5 w-5" />
+                  Report Issue
+                </>
+              )}
             </button>
           </div>
         </form>
