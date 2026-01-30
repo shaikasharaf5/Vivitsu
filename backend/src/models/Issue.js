@@ -18,7 +18,14 @@ const issueSchema = new mongoose.Schema({
   address: String,
   photos: [String],
   reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  city: { type: String, default: 'Bangalore' },
+  
+  // City reference (ObjectId instead of String)
+  city: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'City', 
+    required: true 
+  },
+  
   status: { 
     type: String, 
     enum: ['REPORTED', 'CATEGORIZED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'RESOLVED', 'REJECTED'],
@@ -36,6 +43,7 @@ const issueSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 issueSchema.index({ city: 1, category: 1 });
+issueSchema.index({ city: 1, status: 1 });
 issueSchema.index({ latitude: 1, longitude: 1 });
 
 export default mongoose.model('Issue', issueSchema);

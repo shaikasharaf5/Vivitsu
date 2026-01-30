@@ -17,12 +17,9 @@ const CitizenDashboard = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [sortBy, setSortBy] = useState('recent');
   const [categoryFilter, setCategoryFilter] = useState([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    resolved: 0,
-    inProgress: 0,
-    pending: 0
-  });
+  const [cities, setCities] = useState([]);
+  const [selectedCity, setSelectedCity] = useState(null);
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const socket = useSocket();
   const { user, logout } = useAuth();
@@ -31,47 +28,101 @@ const CitizenDashboard = () => {
   const categories = ['ROADS', 'UTILITIES', 'PARKS', 'TRAFFIC', 'SANITATION', 'HEALTH', 'OTHER'];
 
   useEffect(() => {
-    fetchIssues();
-    fetchStats();
-  }, [sortBy, categoryFilter]);
+    fetchCities();
+  }, []);
+
+  useEffect(() => {
+    if (user?.assignedCity && cities.length > 0 && !selectedCity) {
+      // Check localStorage first for persisted city selection
+      const savedCityId = localStorage.getItem('selectedCityId');
+      
+      // Priority: savedCity > user's assignedCity from registration
+      let cityToSelect = null;
+      
+      if (savedCityId) {
+        cityToSelect = cities.find(city => city._id === savedCityId);
+      }
+      
+      // If no saved city or saved city not found, use assignedCity from registration
+      if (!cityToSelect) {
+        const assignedCityId = typeof user.assignedCity === 'object' 
+          ? user.assignedCity._id 
+          : user.assignedCity;
+        cityToSelect = cities.find(city => city._id === assignedCityId);
+      }
+      
+      if (cityToSelect) {
+        setSelectedCity(cityToSelect);
+        localStorage.setItem('selectedCityId', cityToSelect._id);
+      }
+    }
+  }, [user, cities, selectedCity]);
+
+  // Persist city selection to localStorage when it changes
+  useEffect(() => {
+    if (selectedCity) {
+      localStorage.setItem('selectedCityId', selectedCity._id);
+    }
+  }, [selectedCity]);
+
+  useEffect(() => {
+    if (selectedCity) {
+      fetchIssues();
+    }
+  }, [sortBy, categoryFilter, selectedCity]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showCityDropdown && !e.target.closest('.city-dropdown-container')) {
+        setShowCityDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showCityDropdown]);
 
   useEffect(() => {
     if (socket) {
-      socket.on('issueCreated', (data) => {
-        setIssues((prev) => [data.issue, ...prev]);
-        toast.info('New issue reported in your area');
-        fetchStats();
-      });
+      const handleIssueCreated = (data) => {
+        // Only add issue if it's from the currently selected city
+        if (selectedCity && data.issue.city === selectedCity._id) {
+          setIssues((prev) => [data.issue, ...prev]);
+          toast.info('New issue reported in ' + selectedCity.name);
+        }
+      };
 
-      socket.on('issueUpvoted', (data) => {
+      const handleIssueUpvoted = (data) => {
         setIssues((prev) =>
           prev.map((issue) =>
             issue._id === data.issueId ? { ...issue, upvotes: data.upvotes } : issue
           )
         );
-      });
-    }
-  }, [socket]);
+      };
 
-  const fetchStats = async () => {
+      socket.on('issueCreated', handleIssueCreated);
+      socket.on('issueUpvoted', handleIssueUpvoted);
+
+      return () => {
+        socket.off('issueCreated', handleIssueCreated);
+        socket.off('issueUpvoted', handleIssueUpvoted);
+      };
+    }
+  }, [socket, selectedCity]);
+
+  const fetchCities = async () => {
     try {
-      const response = await axios.get('/api/issues');
-      const allIssues = response.data;
-      setStats({
-        total: allIssues.length,
-        resolved: allIssues.filter(i => i.status === 'RESOLVED').length,
-        inProgress: allIssues.filter(i => i.status === 'IN_PROGRESS').length,
-        pending: allIssues.filter(i => ['REPORTED', 'CATEGORIZED', 'ASSIGNED'].includes(i.status)).length
-      });
+      const response = await axios.get('/api/admin/cities/public');
+      setCities(response.data);
     } catch (error) {
-      console.error('Failed to fetch stats');
+      console.error('Failed to fetch cities');
     }
   };
 
   const fetchIssues = async () => {
     try {
+      if (!selectedCity) return;
       setLoading(true);
-      const params = { sort: sortBy };
+      const params = { sort: sortBy, city: selectedCity._id };
       if (categoryFilter.length > 0) {
         params.category = categoryFilter.join(',');
       }
@@ -103,6 +154,11 @@ const CitizenDashboard = () => {
     );
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('selectedCityId');
+    logout();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       {/* Modern Header */}
@@ -131,6 +187,42 @@ const CitizenDashboard = () => {
 
             {/* Right Section */}
             <div className="flex items-center gap-4">
+              {/* City Selector Dropdown */}
+              <div className="relative city-dropdown-container">
+                <button
+                  onClick={() => setShowCityDropdown(!showCityDropdown)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors border border-blue-200"
+                >
+                  <MapPin className="h-4 w-4" />
+                  <span className="font-medium">{selectedCity?.name || 'Select City'}</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${showCityDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showCityDropdown && (
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 max-h-80 overflow-y-auto z-50">
+                    {cities.map((city) => (
+                      <button
+                        key={city._id}
+                        onClick={() => {
+                          setSelectedCity(city);
+                          setShowCityDropdown(false);
+                        }}
+                        className={`w-full px-4 py-2 text-left hover:bg-blue-50 transition-colors ${
+                          selectedCity?._id === city._id ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {selectedCity?._id === city._id && <CheckCircle className="h-4 w-4" />}
+                          <div>
+                            <div className="font-medium">{city.name}</div>
+                            <div className="text-xs text-gray-500">{city.state}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => navigate('/map')}
                 className="hidden sm:flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -159,7 +251,7 @@ const CitizenDashboard = () => {
               </div>
 
               <button
-                onClick={logout}
+                onClick={handleLogout}
                 className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
               >
                 <LogOut className="h-5 w-5" />
@@ -171,57 +263,6 @@ const CitizenDashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Total Issues */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <AlertCircle className="h-6 w-6 text-blue-600" />
-              </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+12%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Total Issues</h3>
-            <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-          </div>
-
-          {/* Resolved */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-              </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+8%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Resolved</h3>
-            <p className="text-3xl font-bold text-gray-900">{stats.resolved}</p>
-          </div>
-
-          {/* In Progress */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-yellow-100 rounded-lg">
-                <LoaderIcon className="h-6 w-6 text-yellow-600" />
-              </div>
-              <span className="text-sm font-semibold text-yellow-600 bg-yellow-50 px-2 py-1 rounded">-3%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">In Progress</h3>
-            <p className="text-3xl font-bold text-gray-900">{stats.inProgress}</p>
-          </div>
-
-          {/* Pending */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Clock className="h-6 w-6 text-orange-600" />
-              </div>
-              <span className="text-sm font-semibold text-orange-600 bg-orange-50 px-2 py-1 rounded">+5%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Pending</h3>
-            <p className="text-3xl font-bold text-gray-900">{stats.pending}</p>
-          </div>
-        </div>
-
         {/* Quick Actions */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <button
@@ -245,7 +286,17 @@ const CitizenDashboard = () => {
             className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all"
           >
             <BarChart3 className="h-5 w-5" />
-            Analytics
+            View Analytics
+          </button>
+
+          <button
+            onClick={() => navigate('/aqi-map')}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-lg font-semibold shadow-md hover:shadow-lg hover:from-green-700 hover:to-emerald-800 transition-all"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            AQI Map
           </button>
         </div>
 
@@ -346,10 +397,10 @@ const CitizenDashboard = () => {
         <ReportIssueModal
           onClose={() => setShowReportModal(false)}
           onSuccess={(newIssue) => {
-            setIssues([newIssue, ...issues]);
             setShowReportModal(false);
             toast.success('Issue reported successfully!');
             fetchStats();
+            // Socket will handle adding the issue to the list
           }}
         />
       )}

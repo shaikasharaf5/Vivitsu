@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import multer from 'multer';
 import stringSimilarity from 'string-similarity';
 import Issue from '../models/Issue.js';
@@ -115,41 +116,59 @@ router.post('/', authenticate, upload.array('photos', 5), async (req, res) => {
       throw new Error('Missing required fields: title, description, category, latitude, longitude');
     }
 
-    // Step 2: Check for text duplicate issues
-    const recentIssues = await Issue.find({
-      category,
-      createdAt: { $gte: new Date(Date.now() - 7*24*60*60*1000) }
-    });
+    // Step 2: Check for text duplicate issues (unless user chose to ignore)
+    const ignoreDuplicates = req.body.ignoreDuplicates === 'true';
+    
+    if (!ignoreDuplicates) {
+      const recentIssues = await Issue.find({
+        category,
+        city: req.user.assignedCity || req.user.city,
+        createdAt: { $gte: new Date(Date.now() - 7*24*60*60*1000) }
+      });
 
-    const textDuplicates = recentIssues.map(issue => ({
-      issue,
-      score: (
-        stringSimilarity.compareTwoStrings(title, issue.title) * 0.3 +
-        stringSimilarity.compareTwoStrings(description, issue.description) * 0.7
-      )
-    })).filter(d => d.score > 0.75);
+      const textDuplicates = recentIssues.map(issue => ({
+        issue,
+        score: (
+          stringSimilarity.compareTwoStrings(title, issue.title) * 0.3 +
+          stringSimilarity.compareTwoStrings(description, issue.description) * 0.7
+        )
+      })).filter(d => d.score > 0.75);
 
-    if (textDuplicates.length > 0) {
-      console.log(`⚠️ Text duplicate detected`);
-      // Clean up uploaded files
-      if (req.files) {
-        req.files.forEach(file => {
-          try {
-            fs.unlinkSync(file.path);
-          } catch (e) {
-            console.error('Error deleting temp file:', e.message);
-          }
+      if (textDuplicates.length > 0) {
+        console.log(`⚠️ Text duplicate detected (${(textDuplicates[0].score * 100).toFixed(0)}% match) - asking user for approval`);
+        
+        // Return duplicates for user to review and decide
+        return res.status(200).json({
+          textDuplicates: textDuplicates.map(d => ({
+            issue: d.issue,
+            score: d.score,
+            matchPercentage: (d.score * 100).toFixed(0)
+          })),
+          message: 'Similar issues found. Please review before submitting.'
         });
       }
-
-      return res.status(200).json({
-        isDuplicate: true,
-        duplicateIssue: textDuplicates[0].issue,
-        message: 'Similar issue already exists'
-      });
+    } else {
+      console.log('⚠️ User chose to ignore duplicates - creating new issue');
     }
 
     // Step 3: Create issue in MongoDB FIRST (before processing images)
+    // Get city ID from user's assignedCity or legacy city field
+    let cityId = req.user.assignedCity;
+    
+    // If user doesn't have assignedCity, use legacy city field or default
+    if (!cityId && req.user.city) {
+      // Try to find city by name (for backward compatibility)
+      const City = mongoose.model('City');
+      const cityDoc = await City.findOne({ name: req.user.city });
+      if (cityDoc) {
+        cityId = cityDoc._id;
+      }
+    }
+    
+    if (!cityId) {
+      throw new Error('User must be assigned to a city');
+    }
+
     const issue = new Issue({
       title,
       description,
@@ -160,7 +179,7 @@ router.post('/', authenticate, upload.array('photos', 5), async (req, res) => {
       address,
       photos: [], // Will be populated after upload
       reportedBy: req.user._id,
-      city: req.user.city,
+      city: cityId,
       status: 'REPORTED'
     });
 
@@ -340,9 +359,17 @@ router.post('/', authenticate, upload.array('photos', 5), async (req, res) => {
       });
     }
 
-    // Step 8: Emit real-time event
+    // Step 8: Emit real-time event (ONLY ONCE after successful creation)
     const io = req.app.get('io');
-    io.emit('issueCreated', { issue });
+    if (io) {
+      // Populate the issue before emitting to include user details
+      const populatedIssue = await Issue.findById(issue._id)
+        .populate('reportedBy', 'firstName lastName avatar')
+        .populate('city', 'name');
+      
+      io.emit('issueCreated', { issue: populatedIssue });
+      console.log(`📡 Real-time event emitted for issue: ${issue._id}`);
+    }
 
     console.log(`\n✅ Issue creation completed successfully\n`);
 

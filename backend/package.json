@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "migrate": "node src/migrate.js",
     "debug-env": "node -e \"require('dotenv').config(); console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME); console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY);\""
   },
   "dependencies": {

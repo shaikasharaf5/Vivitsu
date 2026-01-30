@@ -62,9 +62,15 @@ const MapView = () => {
 
   useEffect(() => {
     if (socket) {
-      socket.on('issueCreated', (data) => {
+      const handleIssueCreated = (data) => {
         setIssues((prev) => [...prev, data.issue]);
-      });
+      };
+
+      socket.on('issueCreated', handleIssueCreated);
+
+      return () => {
+        socket.off('issueCreated', handleIssueCreated);
+      };
     }
   }, [socket]);
 

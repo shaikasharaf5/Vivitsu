@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from '../utils/axios';
 import { toast } from 'react-toastify';
 import { 
@@ -6,6 +6,7 @@ import {
   FileText, AlertTriangle, CheckCircle, Loader
 } from 'lucide-react';
 import ImageDuplicateWarning from './ImageDuplicateWarning';
+import { getCurrentLocation, reverseGeocode, autocompleteAddress } from '../utils/geocoding';
 
 const ReportIssueModal = ({ onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -23,20 +24,79 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
   const [imageQualityFlags, setImageQualityFlags] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showImageWarning, setShowImageWarning] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchingAddress, setSearchingAddress] = useState(false);
 
   const categories = ['ROADS', 'UTILITIES', 'PARKS', 'TRAFFIC', 'SANITATION', 'HEALTH', 'OTHER'];
 
-  const handleLocationClick = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        setFormData({
-          ...formData,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        });
-        toast.success('Location captured!');
+  // Close suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showSuggestions && !e.target.closest('.address-autocomplete-container')) {
+        setShowSuggestions(false);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showSuggestions]);
+
+  const handleLocationClick = async () => {
+    setGettingLocation(true);
+    try {
+      const location = await getCurrentLocation();
+      
+      // Get address from coordinates
+      const addressData = await reverseGeocode(location.latitude, location.longitude);
+      
+      setFormData({
+        ...formData,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        address: addressData.formattedAddress
       });
+      
+      toast.success('📍 Location captured successfully!');
+    } catch (error) {
+      toast.error(error.message || 'Failed to get location');
+    } finally {
+      setGettingLocation(false);
     }
+  };
+
+  const handleAddressSearch = async (searchQuery) => {
+    setFormData({ ...formData, address: searchQuery });
+    
+    if (searchQuery.length < 3) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setSearchingAddress(true);
+    try {
+      const suggestions = await autocompleteAddress(searchQuery);
+      setAddressSuggestions(suggestions);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error('Address search error:', error);
+    } finally {
+      setSearchingAddress(false);
+    }
+  };
+
+  const handleSuggestionSelect = (suggestion) => {
+    setFormData({
+      ...formData,
+      address: suggestion.displayName,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude
+    });
+    setShowSuggestions(false);
+    setAddressSuggestions([]);
+    toast.success('📍 Location set from address');
   };
 
   const handleSubmit = async (e) => {
@@ -52,6 +112,13 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
+      // Check for text duplicates (user approval needed)
+      if (response.data.textDuplicates && response.data.textDuplicates.length > 0) {
+        setDuplicates(response.data.textDuplicates);
+        setLoading(false);
+        return;
+      }
+
       // Check for image duplicates or quality flags
       if (response.data.imageDuplicates || response.data.imageQualityFlags) {
         setImageDuplicates(response.data.imageDuplicates);
@@ -61,15 +128,20 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
         return;
       }
 
-      // Check for text duplicates
+      // Check for text duplicates (user approval needed)
       if (response.data.textDuplicates && response.data.textDuplicates.length > 0) {
         setDuplicates(response.data.textDuplicates);
         setLoading(false);
         return;
       }
 
-      onSuccess(response.data.issue);
+      // Success - issue created
+      if (response.data.issue) {
+        onSuccess(response.data.issue);
+        setLoading(false);
+      }
     } catch (error) {
+      console.error('Submit error:', error);
       toast.error(error.response?.data?.error || 'Failed to report issue');
       setLoading(false);
     }
@@ -77,16 +149,27 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
 
   const reportAnyway = async () => {
     setShowImageWarning(false);
+    setLoading(true);
+    
     const data = new FormData();
     Object.keys(formData).forEach(key => data.append(key, formData[key]));
     data.append('ignoreDuplicates', 'true');
     photos.forEach(photo => data.append('photos', photo));
 
     try {
-      const response = await axios.post('/api/issues', data);
-      onSuccess(response.data.issue);
+      const response = await axios.post('/api/issues', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      if (response.data.issue) {
+        toast.success('Issue reported successfully!');
+        onSuccess(response.data.issue);
+      }
     } catch (error) {
-      toast.error('Failed to report issue');
+      console.error('Report anyway error:', error);
+      toast.error(error.response?.data?.error || 'Failed to report issue');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -300,19 +383,65 @@ const ReportIssueModal = ({ onClose, onSuccess }) => {
               <button
                 type="button"
                 onClick={handleLocationClick}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
+                disabled={gettingLocation}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:bg-gray-400"
               >
-                <Navigation className="h-4 w-4" />
-                Use Current Location
+                {gettingLocation ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" />
+                    Getting Location...
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="h-4 w-4" />
+                    Use My Location
+                  </>
+                )}
               </button>
             </div>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData({...formData, address: e.target.value})}
-              className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-              placeholder="Enter address or use current location"
-            />
+            
+            {/* Address Input with Autocomplete */}
+            <div className="relative address-autocomplete-container">
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => handleAddressSearch(e.target.value)}
+                onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+                className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                placeholder="Search address or use my location"
+              />
+              
+              {/* Autocomplete Suggestions */}
+              {showSuggestions && addressSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto z-50">
+                  {addressSuggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => handleSuggestionSelect(suggestion)}
+                      className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-0"
+                    >
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-blue-600 mt-1 flex-shrink-0" />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">{suggestion.displayName}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {suggestion.latitude.toFixed(4)}, {suggestion.longitude.toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {searchingAddress && (
+                <div className="absolute right-3 top-2">
+                  <Loader className="h-4 w-4 text-blue-600 animate-spin" />
+                </div>
+              )}
+            </div>
+            
             <div className="flex items-center gap-4 text-xs text-gray-600">
               <div className="flex items-center gap-1">
                 <MapPin className="h-3 w-3" />

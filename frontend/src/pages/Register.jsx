@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../utils/AuthContext';
 import { toast } from 'react-toastify';
-import { Building2, UserPlus, Mail, Lock, User, ArrowRight, Check, Loader, Shield } from 'lucide-react';
+import { Building2, UserPlus, Mail, Lock, User, ArrowRight, Check, Loader, Shield, MapPin, Briefcase } from 'lucide-react';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -12,12 +12,22 @@ const Register = () => {
     firstName: '',
     lastName: '',
     role: 'CITIZEN',
-    city: 'Bangalore'
+    city: '',
+    companyName: ''
   });
   const [loading, setLoading] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
-  const { register } = useAuth();
+  const [cities, setCities] = useState([]);
+  const { register, cities: authCities } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Get cities from AuthContext
+    if (authCities && authCities.length > 0) {
+      setCities(authCities);
+      setFormData(prev => ({ ...prev, city: authCities[0]?._id || '' }));
+    }
+  }, [authCities]);
 
   const calculatePasswordStrength = (password) => {
     let strength = 0;
@@ -43,6 +53,16 @@ const Register = () => {
 
     if (passwordStrength < 3) {
       toast.error('Please choose a stronger password');
+      return;
+    }
+
+    if (!formData.city) {
+      toast.error('Please select a city');
+      return;
+    }
+
+    if (formData.role === 'CONTRACTOR' && !formData.companyName) {
+      toast.error('Company name is required for contractors');
       return;
     }
 
@@ -239,9 +259,91 @@ const Register = () => {
                     placeholder="Re-enter your password"
                     required
                   />
-                  {formData.confirmPassword && formData.password === formData.confirmPassword && (
-                    <Check className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-green-500" />
-                  )}
+                </div>
+                {formData.confirmPassword && (
+                  <p className={`text-xs mt-1 ${formData.password === formData.confirmPassword ? 'text-green-600' : 'text-red-600'}`}>
+                    {formData.password === formData.confirmPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+                  </p>
+                )}
+              </div>
+
+              {/* Role Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Register as
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, role: 'CITIZEN', companyName: ''})}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      formData.role === 'CITIZEN'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <User className={`h-6 w-6 mx-auto mb-2 ${formData.role === 'CITIZEN' ? 'text-blue-600' : 'text-gray-400'}`} />
+                    <p className={`font-medium text-sm ${formData.role === 'CITIZEN' ? 'text-blue-600' : 'text-gray-700'}`}>
+                      Citizen
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({...formData, role: 'CONTRACTOR'})}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      formData.role === 'CONTRACTOR'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Briefcase className={`h-6 w-6 mx-auto mb-2 ${formData.role === 'CONTRACTOR' ? 'text-blue-600' : 'text-gray-400'}`} />
+                    <p className={`font-medium text-sm ${formData.role === 'CONTRACTOR' ? 'text-blue-600' : 'text-gray-700'}`}>
+                      Contractor
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Company Name (Only for Contractors) */}
+              {formData.role === 'CONTRACTOR' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Company Name
+                  </label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({...formData, companyName: e.target.value})}
+                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      placeholder="ABC Construction Pvt. Ltd."
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* City Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select City
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <select
+                    value={formData.city}
+                    onChange={(e) => setFormData({...formData, city: e.target.value})}
+                    className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none cursor-pointer"
+                    required
+                  >
+                    <option value="">Choose your city...</option>
+                    {cities.map((city) => (
+                      <option key={city._id} value={city._id}>
+                        {city.name}, {city.state}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

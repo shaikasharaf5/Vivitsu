@@ -32,6 +32,7 @@ import verificationRoutes from './routes/verifications.js';
 import bidRoutes from './routes/bids.js';
 import analyticsRoutes from './routes/analytics.js';
 import notificationRoutes from './routes/notifications.js';
+import adminRoutes from './routes/admin.js';
 import { initCloudinary, checkCloudinaryConnection } from './utils/cloudinaryService.js';
 
 // Debug: Show which environment variables are loaded
@@ -82,13 +83,34 @@ checkCloudinaryConnection().catch(err => {
 
 // MongoDB Connection
 console.log('🔗 Connecting to MongoDB...');
-mongoose.connect(process.env.MONGODB_URI, {
-  retryWrites: true,
-  w: 'majority'
-})
-  .then(() => console.log('✅ MongoDB Connected'))
+
+async function connectMongoDB() {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      retryWrites: true,
+      w: 'majority'
+    });
+    console.log('✅ MongoDB Connected');
+  } catch (error) {
+    console.error('❌ MongoDB connection failed:', error.message);
+    process.exit(1);
+  }
+}
+
+connectMongoDB()
+  .then(() => {
+    // Start server after successful MongoDB connection
+    const PORT = process.env.PORT || 5000;
+    httpServer.listen(PORT, () => {
+      console.log(`\n🚀 Server running on port ${PORT}`);
+      console.log(`📍 Frontend URL: ${process.env.FRONTEND_URL}`);
+      console.log(`📦 Node Env: ${process.env.NODE_ENV}`);
+      console.log(`📚 API: http://localhost:${PORT}/api`);
+      console.log(`❤️  Health: http://localhost:${PORT}/health\n`);
+    });
+  })
   .catch(err => {
-    console.error('❌ MongoDB Connection Error:', err.message);
+    console.error('❌ Failed to start server:', err);
     process.exit(1);
   });
 
@@ -106,6 +128,7 @@ app.set('io', io);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/issues', issueRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/verifications', verificationRoutes);
@@ -133,15 +156,6 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
   res.status(500).json({ error: err.message || 'Internal server error' });
-});
-
-const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📍 Frontend URL: ${process.env.FRONTEND_URL}`);
-  console.log(`📦 Node Env: ${process.env.NODE_ENV}`);
-  console.log(`📚 API: http://localhost:${PORT}/api`);
-  console.log(`❤️  Health: http://localhost:${PORT}/health\n`);
 });
 
 export default app;

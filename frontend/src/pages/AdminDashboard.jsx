@@ -6,6 +6,7 @@ import {
   Bell, Search, ChevronDown, Filter, Download, MoreVertical, Eye,
   UserPlus, BarChart3, Settings, FileText, Activity
 } from 'lucide-react';
+import EmployeeManagement from '../components/EmployeeManagement';
 
 const AdminDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
@@ -93,14 +94,47 @@ const AdminDashboard = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page Title */}
+        {/* Page Title & Tabs */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard Overview</h1>
-          <p className="text-gray-600">Monitor and manage city issues, users, and analytics</p>
+          <p className="text-gray-600 mb-4">Monitor and manage city issues, users, and analytics</p>
+          
+          {/* Navigation Tabs */}
+          <div className="flex gap-2 border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-6 py-3 font-medium transition-all ${
+                activeTab === 'overview'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Overview
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('employees')}
+              className={`px-6 py-3 font-medium transition-all ${
+                activeTab === 'employees'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Employees
+              </div>
+            </button>
+          </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Tab Content */}
+        {activeTab === 'overview' ? (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Total Issues */}
           <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
             <div className="flex items-center justify-between mb-4">
@@ -248,6 +282,10 @@ const AdminDashboard = () => {
             <Settings className="h-8 w-8 group-hover:scale-110 transition-transform" />
           </button>
         </div>
+          </>
+        ) : activeTab === 'employees' ? (
+          <EmployeeManagement />
+        ) : null}
       </div>
     </div>
   );

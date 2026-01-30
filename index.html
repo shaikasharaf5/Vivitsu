@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FixMyCity AI - Dashboard</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #0b0b0b; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; background: #111; }
+
+        .ui-panel {
+            position: absolute; top: 20px; right: 20px; z-index: 1000;
+            background: rgba(0,0,0,0.9); color: white; padding: 18px; border-radius: 12px; 
+            width: 260px; border: 1px solid #444; backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Dropdown Styling */
+        .city-select {
+            width: 100%; padding: 10px; background: #222; color: #00d4ff; 
+            border: 1px solid #444; border-radius: 6px; margin: 10px 0;
+            font-weight: bold; cursor: pointer; outline: none;
+        }
+
+        .filter-container { display: flex; height: 25px; width: 100%; border-radius: 6px; overflow: hidden; margin: 15px 0; cursor: pointer; border: 1px solid #222; }
+        .filter-seg { flex: 1; height: 100%; transition: 0.3s; opacity: 0.8; }
+        .filter-seg:hover { opacity: 1; transform: scaleY(1.2); }
+        
+        .leaflet-tooltip-district { background: rgba(0,0,0,0.9) !important; color: white !important; border: 1px solid #444 !important; border-radius: 8px !important; }
+        .reset-btn { width: 100%; padding: 10px; background: transparent; color: #00d4ff; border: 1px solid #00d4ff; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .reset-btn:hover { background: #00d4ff; color: black; }
+    </style>
+</head>
+<body>
+
+    <div class="ui-panel">
+        <h2 style="margin:0; color: #00d4ff; font-size: 22px;">FixMyCity AI</h2>
+        <p style="font-size: 11px; color: #888; margin-bottom: 5px;">Select Region:</p>
+        
+        <select class="city-select" id="cityDropdown" onchange="handleCityChange()">
+            <option value="28.4,76.8,28.9,77.4|New Delhi">New Delhi</option>
+            <option value="18.8,72.7,19.3,73.0|Mumbai">Mumbai</option>
+            <option value="22.4,88.2,22.7,88.5|Kolkata">Kolkata</option>
+            <option value="12.8,77.4,13.2,77.8|Bangalore">Bangalore</option>
+            <option value="12.9,80.1,13.2,80.4|Chennai">Chennai</option>
+            <option value="17.2,78.3,17.6,78.6|Hyderabad">Hyderabad</option>
+        </select>
+
+        <p style="font-size: 11px; color: #888; margin-top: 15px;">Filter by AQI Level:</p>
+        <div class="filter-container">
+            <div class="filter-seg" style="background:#00ff00;" onclick="filterMap(0, 50, '#00ff00')" title="Good"></div>
+            <div class="filter-seg" style="background:#ffff00;" onclick="filterMap(51, 100, '#ffff00')" title="Moderate"></div>
+            <div class="filter-seg" style="background:#ff7e00;" onclick="filterMap(101, 200, '#ff7e00')" title="Unhealthy"></div>
+            <div class="filter-seg" style="background:#ff0000;" onclick="filterMap(201, 300, '#ff0000')" title="Hazardous"></div>
+            <div class="filter-seg" style="background:#8f3f97;" onclick="filterMap(301, 999, '#8f3f97')" title="Toxic"></div>
+        </div>
+        <button class="reset-btn" onclick="filterMap(0, 999, null)">VIEW ALL REGIONS</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
+
+    <script>
+        const TOKEN = '0a7700e810b5e17011b2773dcb559a6cbec692a0'; // Replace with your real token
+        const map = L.map('map', { zoomControl: false }).setView([28.61, 77.20], 11);
+        
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+        let allStationData = []; 
+        let heatLayer = null;
+        let markersGroup = L.layerGroup().addTo(map);
+
+        function getStatusColor(aqi) {
+            if (aqi <= 50) return "#00ff00";
+            if (aqi <= 100) return "#ffff00";
+            if (aqi <= 200) return "#ff7e00";
+            if (aqi <= 300) return "#ff0000";
+            return "#8f3f97";
+        }
+
+        // Handle selection from dropdown
+        function handleCityChange() {
+            const val = document.getElementById('cityDropdown').value;
+            const [boundsStr, cityName] = val.split('|');
+            const bounds = boundsStr.split(',').map(Number);
+            startAnalysis(bounds, cityName);
+        }
+
+        async function startAnalysis(bounds, cityName) {
+            // Zoom to city
+            const center = [(bounds[0]+bounds[2])/2, (bounds[1]+bounds[3])/2];
+            map.flyTo(center, 12, { animate: true, duration: 1.5 });
+
+            try {
+                const url = `https://api.waqi.info/map/bounds/?latlng=${bounds.join(',')}&token=${TOKEN}`;
+                const res = await fetch(url);
+                const result = await res.json();
+
+                if (result.status === "ok") {
+                    allStationData = result.data;
+                    setTimeout(() => renderData(allStationData, null), 1000);
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function renderData(dataList, filterColor) {
+            if (heatLayer) map.removeLayer(heatLayer);
+            markersGroup.clearLayers();
+
+            let heatPoints = [];
+            let currentGradient = filterColor ? 
+                { 0.1: filterColor, 0.5: filterColor, 1.0: filterColor } : 
+                { 0.2: '#00ff00', 0.4: '#ffff00', 0.6: '#ff7e00', 1.0: '#ff0000' };
+
+            dataList.forEach(s => {
+                const aqi = parseInt(s.aqi);
+                if (!isNaN(aqi)) {
+                    const color = getStatusColor(aqi);
+                    heatPoints.push([s.lat, s.lon, 1.0]);
+
+                    const m = L.circleMarker([s.lat, s.lon], {
+                        radius: 8, color: color, fillColor: color, fillOpacity: 0.8, weight: 2
+                    });
+
+                    m.bindTooltip(`<b>${s.station.name}</b><br><span style="color:${color}; font-weight:bold;">AQI: ${aqi}</span>`, { sticky: true, className: 'leaflet-tooltip-district' });
+                    markersGroup.addLayer(m);
+                }
+            });
+
+            heatLayer = L.heatLayer(heatPoints, { radius: 45, blur: 25, max: 1.0, gradient: currentGradient }).addTo(map);
+        }
+
+        function filterMap(min, max, color) {
+            const filtered = allStationData.filter(s => {
+                const val = parseInt(s.aqi);
+                return val >= min && val <= max;
+            });
+            renderData(filtered, color);
+        }
+
+        // Initialize with default city (New Delhi)
+        window.onload = handleCityChange;
+    </script>
+</body>
+</html>

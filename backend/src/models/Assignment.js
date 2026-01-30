@@ -4,6 +4,14 @@ const assignmentSchema = new mongoose.Schema({
   issue: { type: mongoose.Schema.Types.ObjectId, ref: 'Issue', required: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  
+  // City reference for access control
+  city: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'City', 
+    required: true 
+  },
+  
   assignmentType: { 
     type: String, 
     enum: ['DIRECT', 'CONTRACTOR_BID', 'AUTO_ASSIGNED'],
@@ -33,5 +41,9 @@ const assignmentSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
   }]
 }, { timestamps: true });
+
+// Indexes for efficient queries
+assignmentSchema.index({ city: 1, status: 1 });
+assignmentSchema.index({ assignedTo: 1, status: 1 });
 
 export default mongoose.model('Assignment', assignmentSchema);
