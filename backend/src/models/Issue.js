@@ -28,9 +28,16 @@ const issueSchema = new mongoose.Schema({
   
   status: { 
     type: String, 
-    enum: ['REPORTED', 'CATEGORIZED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'RESOLVED', 'REJECTED'],
+    enum: ['REPORTED', 'CATEGORIZED', 'ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'RESOLVED', 'REJECTED', 'OPEN_FOR_BIDDING'],
     default: 'REPORTED'
   },
+  
+  // Assignment fields
+  assignedWorker: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  assignedContractor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedAt: Date,
+  contractAmount: Number,
+  
   upvotes: { type: Number, default: 0 },
   upvotedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isDuplicateOf: { type: mongoose.Schema.Types.ObjectId, ref: 'Issue' },

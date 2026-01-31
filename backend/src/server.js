@@ -33,6 +33,9 @@ import bidRoutes from './routes/bids.js';
 import analyticsRoutes from './routes/analytics.js';
 import notificationRoutes from './routes/notifications.js';
 import adminRoutes from './routes/admin.js';
+import employeeRoutes from './routes/employees.js';
+import workUpdateRoutes from './routes/workUpdates.js';
+import autoAssignmentRoutes from './routes/autoAssignment.js';
 import { initCloudinary, checkCloudinaryConnection } from './utils/cloudinaryService.js';
 
 // Debug: Show which environment variables are loaded
@@ -135,6 +138,9 @@ app.use('/api/verifications', verificationRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/employees', employeeRoutes);
+app.use('/api/work-updates', workUpdateRoutes);
+app.use('/api/auto-assignment', autoAssignmentRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

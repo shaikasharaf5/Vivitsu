@@ -216,7 +216,7 @@ const generatePassword = () => {
 // Add worker or inspector (Municipal Admin only)
 router.post('/employees', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { firstName, lastName, role, phone, email } = req.body;
+    const { firstName, lastName, role, phone, email, workArea } = req.body;
 
     // Validate role
     if (!['WORKER', 'INSPECTOR'].includes(role)) {
@@ -257,6 +257,7 @@ router.post('/employees', authenticate, requireAdmin, async (req, res) => {
       username,
       role,
       assignedCity: cityId,
+      workArea: workArea || undefined,
       isSystemGenerated: true,
       createdBy: req.user._id,
       status: 'ACTIVE'
@@ -274,7 +275,8 @@ router.post('/employees', authenticate, requireAdmin, async (req, res) => {
         name: `${employee.firstName} ${employee.lastName}`,
         role: employee.role,
         cityName: city.name,
-        phone: employee.phone
+        phone: employee.phone,
+        workArea: employee.workArea
       }
     });
   } catch (error) {
@@ -298,6 +300,33 @@ router.get('/employees', authenticate, requireAdmin, async (req, res) => {
     const employees = await User.find(query)
       .select('-password')
       .sort({ createdAt: -1 });
+
+    // If fetching workers, add their task statistics
+    if (role === 'WORKER' || !role) {
+      const Issue = (await import('../models/Issue.js')).default;
+      
+      for (let employee of employees) {
+        if (employee.role === 'WORKER') {
+          const totalTasks = await Issue.countDocuments({ 
+            assignedWorker: employee._id 
+          });
+          const completedTasks = await Issue.countDocuments({ 
+            assignedWorker: employee._id,
+            status: { $in: ['COMPLETED', 'RESOLVED'] }
+          });
+          const inProgressTasks = await Issue.countDocuments({ 
+            assignedWorker: employee._id,
+            status: { $in: ['ASSIGNED', 'IN_PROGRESS'] }
+          });
+          
+          employee._doc.stats = {
+            totalTasks,
+            completedTasks,
+            inProgressTasks
+          };
+        }
+      }
+    }
 
     res.json(employees);
   } catch (error) {
@@ -350,6 +379,113 @@ router.get('/analytics/city', authenticate, requireAdmin, async (req, res) => {
         workers,
         inspectors
       }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Auto-assign issues to workers (Municipal Admin)
+router.post('/auto-assign-issues', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const cityId = req.user.assignedCity;
+    const Issue = (await import('../models/Issue.js')).default;
+    
+    // Get all categorized (unassigned) issues for this city
+    const unassignedIssues = await Issue.find({ 
+      city: cityId, 
+      status: 'CATEGORIZED'
+    })
+    .populate('reportedBy', 'firstName lastName')
+    .sort({ upvotes: -1, createdAt: 1 }); // Priority: most liked, then oldest
+    
+    if (unassignedIssues.length === 0) {
+      return res.json({ message: 'No unassigned issues found', assigned: 0 });
+    }
+    
+    // Get available workers (with capacity < 2 in-progress tasks)
+    const workers = await User.find({ 
+      assignedCity: cityId, 
+      role: 'WORKER',
+      status: 'ACTIVE'
+    }).select('firstName lastName workArea');
+    
+    if (workers.length === 0) {
+      return res.status(400).json({ error: 'No active workers found' });
+    }
+    
+    // Calculate current workload for each worker
+    const workerLoads = await Promise.all(
+      workers.map(async (worker) => {
+        const inProgressCount = await Issue.countDocuments({
+          assignedWorker: worker._id,
+          status: { $in: ['ASSIGNED', 'IN_PROGRESS'] }
+        });
+        return {
+          worker,
+          currentLoad: inProgressCount,
+          available: inProgressCount < 2
+        };
+      })
+    );
+    
+    // Filter only available workers
+    const availableWorkers = workerLoads.filter(w => w.available);
+    
+    if (availableWorkers.length === 0) {
+      return res.json({ message: 'All workers are at full capacity', assigned: 0 });
+    }
+    
+    let assignedCount = 0;
+    
+    // Assign issues to workers
+    for (const issue of unassignedIssues) {
+      // Find workers whose work area matches the issue location
+      const matchingWorkers = availableWorkers.filter(w => {
+        if (!w.worker.workArea || !issue.location?.address) return false;
+        // Simple string matching - can be enhanced with geolocation
+        const workArea = w.worker.workArea.toLowerCase();
+        const issueAddress = issue.location.address.toLowerCase();
+        return issueAddress.includes(workArea) || workArea.includes(issueAddress.split(',')[0]);
+      });
+      
+      // If no matching workers, use any available worker
+      const candidateWorkers = matchingWorkers.length > 0 ? matchingWorkers : availableWorkers;
+      
+      if (candidateWorkers.length === 0) break;
+      
+      // Sort by current load (load balancing)
+      candidateWorkers.sort((a, b) => a.currentLoad - b.currentLoad);
+      
+      // Assign to worker with lowest load
+      const selectedWorker = candidateWorkers[0];
+      
+      issue.assignedWorker = selectedWorker.worker._id;
+      issue.status = 'ASSIGNED';
+      issue.assignedAt = new Date();
+      await issue.save();
+      
+      assignedCount++;
+      
+      // Update worker load
+      selectedWorker.currentLoad++;
+      
+      // Remove from available if now at capacity
+      if (selectedWorker.currentLoad >= 2) {
+        const index = availableWorkers.indexOf(selectedWorker);
+        if (index > -1) {
+          availableWorkers.splice(index, 1);
+        }
+      }
+      
+      // Stop if no more available workers
+      if (availableWorkers.length === 0) break;
+    }
+    
+    res.json({ 
+      message: `Successfully assigned ${assignedCount} issue(s)`,
+      assigned: assignedCount,
+      totalUnassigned: unassignedIssues.length
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

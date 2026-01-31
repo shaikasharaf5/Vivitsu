@@ -1,21 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../utils/axios';
 import { useAuth } from '../utils/AuthContext';
+import { toast } from 'react-toastify';
 import { 
   LogOut, TrendingUp, AlertCircle, CheckCircle, Clock, Users, MapPin,
   Bell, Search, ChevronDown, Filter, Download, MoreVertical, Eye,
-  UserPlus, BarChart3, Settings, FileText, Activity
+  UserPlus, BarChart3, Settings, FileText, Activity, Briefcase, Map, X
 } from 'lucide-react';
 import EmployeeManagement from '../components/EmployeeManagement';
+import BidReviewModal from '../components/BidReviewModal';
+import IssueMapView from '../components/IssueMapView';
 
 const AdminDashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showBidReview, setShowBidReview] = useState(false);
+  const [showMapView, setShowMapView] = useState(false);
+  const [unassignedIssues, setUnassignedIssues] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const [selectedWorker, setSelectedWorker] = useState(null);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const { user, logout } = useAuth();
 
   useEffect(() => {
     fetchAnalytics();
-  }, []);
+    if (activeTab === 'unassigned') {
+      fetchUnassignedIssues();
+    } else if (activeTab === 'users') {
+      fetchWorkers();
+    }
+  }, [activeTab]);
 
   const fetchAnalytics = async () => {
     try {
@@ -23,6 +37,52 @@ const AdminDashboard = () => {
       setAnalytics(response.data);
     } catch (error) {
       console.error('Failed to fetch analytics');
+    }
+  };
+
+  const fetchUnassignedIssues = async () => {
+    try {
+      const response = await axios.get('/api/issues', {
+        params: { status: 'CATEGORIZED', city: user?.assignedCity }
+      });
+      setUnassignedIssues(response.data);
+    } catch (error) {
+      console.error('Failed to fetch unassigned issues');
+    }
+  };
+
+  const fetchWorkers = async () => {
+    try {
+      const response = await axios.get('/api/employees', {
+        params: { role: 'WORKER', city: user?.assignedCity }
+      });
+      setWorkers(response.data);
+    } catch (error) {
+      console.error('Failed to fetch workers');
+    }
+  };
+
+  const handleOpenForBidding = async (issueId) => {
+    try {
+      await axios.patch(`/api/issues/${issueId}/status`, { status: 'OPEN_FOR_BIDDING' });
+      toast.success('Issue opened for contractor bidding');
+      fetchUnassignedIssues();
+    } catch (error) {
+      toast.error('Failed to open issue for bidding');
+    }
+  };
+
+  const handleAutoAssignment = async () => {
+    try {
+      setAutoAssigning(true);
+      const response = await axios.post('/api/admin/auto-assign-issues');
+      toast.success(response.data.message || 'Auto-assignment completed');
+      fetchUnassignedIssues();
+      fetchWorkers();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Auto-assignment failed');
+    } finally {
+      setAutoAssigning(false);
     }
   };
 
@@ -100,10 +160,10 @@ const AdminDashboard = () => {
           <p className="text-gray-600 mb-4">Monitor and manage city issues, users, and analytics</p>
           
           {/* Navigation Tabs */}
-          <div className="flex gap-2 border-b border-gray-200">
+          <div className="flex gap-2 border-b border-gray-200 overflow-x-auto">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-3 font-medium transition-all ${
+              className={`px-6 py-3 font-medium transition-all whitespace-nowrap ${
                 activeTab === 'overview'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -115,8 +175,21 @@ const AdminDashboard = () => {
               </div>
             </button>
             <button
+              onClick={() => setActiveTab('unassigned')}
+              className={`px-6 py-3 font-medium transition-all whitespace-nowrap ${
+                activeTab === 'unassigned'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Unassigned Issues
+              </div>
+            </button>
+            <button
               onClick={() => setActiveTab('employees')}
-              className={`px-6 py-3 font-medium transition-all ${
+              className={`px-6 py-3 font-medium transition-all whitespace-nowrap ${
                 activeTab === 'employees'
                   ? 'text-blue-600 border-b-2 border-blue-600'
                   : 'text-gray-600 hover:text-gray-900'
@@ -127,67 +200,38 @@ const AdminDashboard = () => {
                 Employees
               </div>
             </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-6 py-3 font-medium transition-all whitespace-nowrap ${
+                activeTab === 'users'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5" />
+                Manage Users
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`px-6 py-3 font-medium transition-all whitespace-nowrap ${
+                activeTab === 'analytics'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Analytics
+              </div>
+            </button>
           </div>
         </div>
 
         {/* Tab Content */}
         {activeTab === 'overview' ? (
           <>
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Total Issues */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-blue-100 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-blue-600" />
-              </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+12%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Total Issues</h3>
-            <p className="text-3xl font-bold text-gray-900">{analytics.totalIssues}</p>
-            <p className="text-xs text-gray-500 mt-2">All time</p>
-          </div>
-
-          {/* Open Issues */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-yellow-100 rounded-xl">
-                <AlertCircle className="h-6 w-6 text-yellow-600" />
-              </div>
-              <span className="text-sm font-semibold text-yellow-600 bg-yellow-50 px-2 py-1 rounded">+5%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Open Issues</h3>
-            <p className="text-3xl font-bold text-gray-900">{analytics.openIssues}</p>
-            <p className="text-xs text-gray-500 mt-2">Requires attention</p>
-          </div>
-
-          {/* Resolved */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-green-100 rounded-xl">
-                <CheckCircle className="h-6 w-6 text-green-600" />
-              </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+8%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Resolved Issues</h3>
-            <p className="text-3xl font-bold text-gray-900">{analytics.resolvedIssues}</p>
-            <p className="text-xs text-gray-500 mt-2">Successfully completed</p>
-          </div>
-
-          {/* Avg Resolution Time */}
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-purple-100 rounded-xl">
-                <Clock className="h-6 w-6 text-purple-600" />
-              </div>
-              <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">-8%</span>
-            </div>
-            <h3 className="text-gray-600 text-sm font-medium mb-1">Avg Resolution Time</h3>
-            <p className="text-3xl font-bold text-gray-900">{analytics.avgResolutionTime}d</p>
-            <p className="text-xs text-gray-500 mt-2">Faster than last month</p>
-          </div>
-        </div>
-
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Category Breakdown */}
@@ -257,7 +301,29 @@ const AdminDashboard = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <button 
+            onClick={() => setShowBidReview(true)}
+            className="bg-gradient-to-r from-orange-600 to-orange-700 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between group"
+          >
+            <div className="text-left">
+              <h3 className="font-bold text-lg mb-1">Review Bids</h3>
+              <p className="text-orange-100 text-sm">Approve contractor proposals</p>
+            </div>
+            <Briefcase className="h-8 w-8 group-hover:scale-110 transition-transform" />
+          </button>
+
+          <button 
+            onClick={() => setShowMapView(true)}
+            className="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between group"
+          >
+            <div className="text-left">
+              <h3 className="font-bold text-lg mb-1">Map View</h3>
+              <p className="text-teal-100 text-sm">Visual overview of issues</p>
+            </div>
+            <Map className="h-8 w-8 group-hover:scale-110 transition-transform" />
+          </button>
+
           <button className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between group">
             <div className="text-left">
               <h3 className="font-bold text-lg mb-1">Manage Users</h3>
@@ -273,20 +339,370 @@ const AdminDashboard = () => {
             </div>
             <BarChart3 className="h-8 w-8 group-hover:scale-110 transition-transform" />
           </button>
-
-          <button className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between group">
-            <div className="text-left">
-              <h3 className="font-bold text-lg mb-1">Settings</h3>
-              <p className="text-purple-100 text-sm">Configure system settings</p>
-            </div>
-            <Settings className="h-8 w-8 group-hover:scale-110 transition-transform" />
-          </button>
         </div>
           </>
+        ) : activeTab === 'unassigned' ? (
+          <div className="bg-white rounded-xl shadow-md p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-6">Unassigned Issues</h2>
+            {unassignedIssues.length === 0 ? (
+              <div className="text-center py-12">
+                <AlertCircle className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No unassigned issues found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {unassignedIssues.map((issue) => (
+                      <tr key={issue._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          #{issue._id.slice(-6)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
+                          {issue.description}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                            {issue.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                            issue.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
+                            issue.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
+                          }`}>
+                            {issue.priority}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {issue.location?.address || 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => handleOpenForBidding(issue._id)}
+                            className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:shadow-lg transition-all"
+                          >
+                            Open for Tender
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         ) : activeTab === 'employees' ? (
           <EmployeeManagement />
+        ) : activeTab === 'users' ? (
+          <div className="bg-white rounded-xl shadow-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">Worker Management & Progress</h2>
+              <button
+                onClick={handleAutoAssignment}
+                disabled={autoAssigning}
+                className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+              >
+                {autoAssigning ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-5 w-5 mr-2" />
+                    Auto-Assign Issues
+                  </>
+                )}
+              </button>
+            </div>
+            {workers.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No workers found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {workers.map((worker) => (
+                  <div 
+                    key={worker._id} 
+                    onClick={() => setSelectedWorker(worker)}
+                    className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-all cursor-pointer hover:border-blue-400">
+                    <div className="flex items-center mb-4">
+                      <div className="p-3 bg-indigo-100 rounded-full mr-4">
+                        <Users className="h-6 w-6 text-indigo-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">{worker.name}</h3>
+                        <p className="text-sm text-gray-500">{worker.email}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Work Area:</span>
+                        <span className="text-sm font-semibold text-gray-900">{worker.workArea || 'Not Assigned'}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Total Tasks:</span>
+                        <span className="text-sm font-semibold text-gray-900">{worker.stats?.totalTasks || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Completed:</span>
+                        <span className="text-sm font-semibold text-green-600">{worker.stats?.completedTasks || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">In Progress:</span>
+                        <span className="text-sm font-semibold text-blue-600">{worker.stats?.inProgressTasks || 0}</span>
+                      </div>
+                      
+                      {/* Progress Bar */}
+                      <div className="mt-4">
+                        <div className="flex justify-between text-xs text-gray-600 mb-1">
+                          <span>Completion Rate</span>
+                          <span>{worker.stats?.totalTasks > 0 ? Math.round((worker.stats.completedTasks / worker.stats.totalTasks) * 100) : 0}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all"
+                            style={{ 
+                              width: `${worker.stats?.totalTasks > 0 ? (worker.stats.completedTasks / worker.stats.totalTasks) * 100 : 0}%` 
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'analytics' ? (
+          <div>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {/* Total Issues */}
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-blue-100 rounded-xl">
+                    <TrendingUp className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+12%</span>
+                </div>
+                <h3 className="text-gray-600 text-sm font-medium mb-1">Total Issues</h3>
+                <p className="text-3xl font-bold text-gray-900">{analytics.totalIssues}</p>
+                <p className="text-xs text-gray-500 mt-2">All time</p>
+              </div>
+
+              {/* Open Issues */}
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-yellow-100 rounded-xl">
+                    <AlertCircle className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-yellow-600 bg-yellow-50 px-2 py-1 rounded">+5%</span>
+                </div>
+                <h3 className="text-gray-600 text-sm font-medium mb-1">Open Issues</h3>
+                <p className="text-3xl font-bold text-gray-900">{analytics.openIssues}</p>
+                <p className="text-xs text-gray-500 mt-2">Requires attention</p>
+              </div>
+
+              {/* Resolved */}
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-green-100 rounded-xl">
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">+8%</span>
+                </div>
+                <h3 className="text-gray-600 text-sm font-medium mb-1">Resolved Issues</h3>
+                <p className="text-3xl font-bold text-gray-900">{analytics.resolvedIssues}</p>
+                <p className="text-xs text-gray-500 mt-2">Successfully completed</p>
+              </div>
+
+              {/* Avg Resolution Time */}
+              <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100 hover:shadow-lg transition-all">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-purple-100 rounded-xl">
+                    <Clock className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-1 rounded">-8%</span>
+                </div>
+                <h3 className="text-gray-600 text-sm font-medium mb-1">Avg Resolution Time</h3>
+                <p className="text-3xl font-bold text-gray-900">{analytics.avgResolutionTime}d</p>
+                <p className="text-xs text-gray-500 mt-2">Faster than last month</p>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
+
+      {/* Worker Detail Modal */}
+      {selectedWorker && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-2xl mr-4">
+                    {selectedWorker.firstName?.charAt(0) || 'W'}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">
+                      {selectedWorker.firstName} {selectedWorker.lastName}
+                    </h2>
+                    <p className="text-indigo-100">{selectedWorker.role}</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedWorker(null)} className="text-white hover:text-gray-200">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Basic Information */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <Users className="h-5 w-5 mr-2 text-indigo-600" />
+                  Basic Information
+                </h3>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Username</label>
+                    <p className="text-gray-900 font-mono bg-white px-3 py-2 rounded">{selectedWorker.username || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Employee ID</label>
+                    <p className="text-gray-900 font-mono bg-white px-3 py-2 rounded">#{selectedWorker._id?.slice(-8)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Email</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded text-sm">{selectedWorker.email}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Phone</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded">{selectedWorker.phone || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Status</label>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                      selectedWorker.status === 'ACTIVE' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedWorker.status}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Created On</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded text-sm">
+                      {new Date(selectedWorker.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Work Area */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <MapPin className="h-5 w-5 mr-2 text-green-600" />
+                  Work Assignment
+                </h3>
+                <div className="bg-green-50 border-l-4 border-green-500 rounded-xl p-4">
+                  <label className="block text-gray-600 text-sm font-semibold mb-2">Assigned Work Area</label>
+                  <p className="text-lg font-bold text-gray-900">
+                    {selectedWorker.workArea || 'No area assigned'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    This worker is responsible for handling issues in this designated area
+                  </p>
+                </div>
+              </div>
+
+              {/* Task Statistics */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <Briefcase className="h-5 w-5 mr-2 text-purple-600" />
+                  Task Statistics
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-blue-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {selectedWorker.stats?.totalTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">Total Tasks</p>
+                  </div>
+                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-green-600">
+                      {selectedWorker.stats?.completedTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">Completed</p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {selectedWorker.stats?.inProgressTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">In Progress</p>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>Current Workload</span>
+                    <span className={`font-semibold ${
+                      (selectedWorker.stats?.inProgressTasks || 0) >= 2 ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {selectedWorker.stats?.inProgressTasks || 0} / 2 max
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div 
+                      className={`h-3 rounded-full transition-all ${
+                        (selectedWorker.stats?.inProgressTasks || 0) >= 2 ? 'bg-red-500' : 'bg-green-500'
+                      }`}
+                      style={{ width: `${Math.min(((selectedWorker.stats?.inProgressTasks || 0) / 2) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {(selectedWorker.stats?.inProgressTasks || 0) >= 2 ? 'Worker at full capacity' : 'Worker available for assignments'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedWorker(null)}
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl hover:shadow-lg font-semibold transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      <BidReviewModal 
+        isOpen={showBidReview}
+        onClose={() => setShowBidReview(false)}
+        onSuccess={fetchAnalytics}
+      />
+
+      <IssueMapView 
+        isOpen={showMapView}
+        onClose={() => setShowMapView(false)}
+        cityId={user?.assignedCity}
+      />
     </div>
   );
 };

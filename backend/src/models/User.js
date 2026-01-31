@@ -36,6 +36,12 @@ const userSchema = new mongoose.Schema({
     }
   },
   
+  // Work area for workers (simple text description)
+  workArea: {
+    type: String,
+    trim: true
+  },
+  
   // Legacy field for backward compatibility (will be migrated to assignedCity)
   city: { type: String },
   

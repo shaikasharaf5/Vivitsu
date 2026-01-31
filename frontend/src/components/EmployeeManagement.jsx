@@ -19,9 +19,11 @@ const EmployeeManagement = () => {
     lastName: '',
     role: 'WORKER',
     phone: '',
-    email: ''
+    email: '',
+    workArea: ''
   });
   const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
 
   useEffect(() => {
     fetchEmployees();
@@ -46,7 +48,7 @@ const EmployeeManagement = () => {
       // Show credentials modal
       setCreatedCredentials(response.data.employee);
       setShowAddEmployee(false);
-      setNewEmployee({ firstName: '', lastName: '', role: 'WORKER', phone: '', email: '' });
+      setNewEmployee({ firstName: '', lastName: '', role: 'WORKER', phone: '', email: '', workArea: '' });
       fetchEmployees();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create employee');
@@ -147,15 +149,16 @@ const EmployeeManagement = () => {
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Name</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Username</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Role</th>
+                <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Work Area</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Email</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Phone</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Status</th>
-                <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Created</th>
+                <th className="px-6 py-4 text-left text-sm font-bold text-gray-700 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredEmployees.map((employee) => (
-                <tr key={employee._id} className="hover:bg-blue-50 transition-colors">
+                <tr key={employee._id} className="hover:bg-blue-50 transition-colors cursor-pointer" onClick={() => setSelectedEmployee(employee)}>
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white font-bold">
@@ -181,6 +184,7 @@ const EmployeeManagement = () => {
                       {employee.role}
                     </span>
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{employee.workArea || '-'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{employee.email}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{employee.phone || '-'}</td>
                   <td className="px-6 py-4">
@@ -192,8 +196,16 @@ const EmployeeManagement = () => {
                       {employee.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {new Date(employee.createdAt).toLocaleDateString()}
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedEmployee(employee);
+                      }}
+                      className="text-blue-600 hover:text-blue-800 font-semibold"
+                    >
+                      View Details
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -284,6 +296,21 @@ const EmployeeManagement = () => {
                     placeholder="Auto-generated if empty"
                   />
                 </div>
+
+                {newEmployee.role === 'WORKER' && (
+                  <div>
+                    <label className="block text-gray-700 font-semibold mb-2">Work Area *</label>
+                    <input
+                      type="text"
+                      value={newEmployee.workArea}
+                      onChange={(e) => setNewEmployee({...newEmployee, workArea: e.target.value})}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g., Zone A, District 5, Sector 12"
+                      required={newEmployee.role === 'WORKER'}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Specify the area/zone this worker will be responsible for</p>
+                  </div>
+                )}
 
                 <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                   <p className="text-sm text-blue-800 font-semibold mb-1">Auto-Generated Credentials</p>
@@ -390,6 +417,158 @@ const EmployeeManagement = () => {
               <button
                 onClick={() => setCreatedCredentials(null)}
                 className="w-full mt-6 bg-green-600 text-white py-3 rounded-xl hover:bg-green-700 font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Detail Modal */}
+      {selectedEmployee && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white font-bold text-2xl mr-4">
+                    {selectedEmployee.firstName.charAt(0)}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">
+                      {selectedEmployee.firstName} {selectedEmployee.lastName}
+                    </h2>
+                    <p className="text-blue-100">{selectedEmployee.role}</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedEmployee(null)} className="text-white hover:text-gray-200">
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Basic Information */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <UserCog className="h-5 w-5 mr-2 text-blue-600" />
+                  Basic Information
+                </h3>
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Username</label>
+                    <p className="text-gray-900 font-mono bg-white px-3 py-2 rounded">{selectedEmployee.username}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Employee ID</label>
+                    <p className="text-gray-900 font-mono bg-white px-3 py-2 rounded">#{selectedEmployee._id.slice(-8)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Email</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded">{selectedEmployee.email}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Phone</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded">{selectedEmployee.phone || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Status</label>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                      selectedEmployee.status === 'ACTIVE' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {selectedEmployee.status}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 text-sm font-semibold mb-1">Created On</label>
+                    <p className="text-gray-900 bg-white px-3 py-2 rounded">
+                      {new Date(selectedEmployee.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Work Area - Only for Workers */}
+              {selectedEmployee.role === 'WORKER' && (
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <MapPin className="h-5 w-5 mr-2 text-green-600" />
+                    Work Assignment
+                  </h3>
+                  <div className="bg-green-50 border-l-4 border-green-500 rounded-xl p-4">
+                    <label className="block text-gray-600 text-sm font-semibold mb-2">Assigned Work Area</label>
+                    <p className="text-lg font-bold text-gray-900">
+                      {selectedEmployee.workArea || 'No area assigned'}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1">
+                      This worker is responsible for handling issues in this designated area
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Task Statistics */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <Briefcase className="h-5 w-5 mr-2 text-purple-600" />
+                  Task Statistics
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-blue-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {selectedEmployee.stats?.totalTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">Total Tasks</p>
+                  </div>
+                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-green-600">
+                      {selectedEmployee.stats?.completedTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">Completed</p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {selectedEmployee.stats?.inProgressTasks || 0}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">In Progress</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* System Information */}
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                  <Shield className="h-5 w-5 mr-2 text-gray-600" />
+                  System Information
+                </h3>
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">System Generated:</span>
+                    <span className="font-semibold text-gray-900">
+                      {selectedEmployee.isSystemGenerated ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Assigned City:</span>
+                    <span className="font-semibold text-gray-900">
+                      {selectedEmployee.assignedCity?.name || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Last Updated:</span>
+                    <span className="font-semibold text-gray-900">
+                      {new Date(selectedEmployee.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setSelectedEmployee(null)}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-xl hover:shadow-lg font-semibold transition-all"
               >
                 Close
               </button>

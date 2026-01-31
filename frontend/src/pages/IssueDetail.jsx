@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from '../utils/axios';
 import { useAuth } from '../utils/AuthContext';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Heart, MapPin, Calendar, User, MessageCircle, Clock, CheckCircle2, AlertCircle, Image as ImageIcon, X } from 'lucide-react';
+import { ArrowLeft, Heart, MapPin, Calendar, User, MessageCircle, Clock, CheckCircle2, AlertCircle, Image as ImageIcon, X, Briefcase, DollarSign, TrendingUp, FileText } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id } = useParams();
@@ -13,10 +13,18 @@ const IssueDetail = () => {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [imageModal, setImageModal] = useState(null);
+  const [bids, setBids] = useState([]);
+  const [loadingBids, setLoadingBids] = useState(false);
 
   useEffect(() => {
     fetchIssue();
   }, [id]);
+
+  useEffect(() => {
+    if (issue && (issue.status === 'OPEN_FOR_BIDDING' || issue.status === 'CATEGORIZED')) {
+      fetchBids();
+    }
+  }, [issue]);
 
   const fetchIssue = async () => {
     try {
@@ -26,6 +34,18 @@ const IssueDetail = () => {
     } catch (error) {
       toast.error('Issue not found');
       navigate('/');
+    }
+  };
+
+  const fetchBids = async () => {
+    setLoadingBids(true);
+    try {
+      const response = await axios.get(`/api/bids/issue/${id}`);
+      setBids(response.data);
+    } catch (error) {
+      console.error('Failed to fetch bids:', error);
+    } finally {
+      setLoadingBids(false);
     }
   };
 
@@ -168,7 +188,191 @@ const IssueDetail = () => {
                   <button
                     onClick={handleUpvote}
                     className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-semibold transition-all ${
-                      issue.hasUpvoted 
+                      issue.hasUpvoted
+                        ? 'bg-red-500 text-white shadow-lg hover:bg-red-600'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Heart className={`h-5 w-5 ${issue.hasUpvoted ? 'fill-white' : ''}`} />
+                    <span>{issue.upvotes} Upvotes</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Public Tender/Bids Section - Only show for OPEN_FOR_BIDDING or CATEGORIZED issues */}
+            {(issue.status === 'OPEN_FOR_BIDDING' || issue.status === 'CATEGORIZED') && (
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div className="bg-gradient-to-r from-orange-100 to-orange-50 p-6 border-b-2 border-orange-200">
+                  <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                    <Briefcase className="h-6 w-6 mr-3 text-orange-600" />
+                    Public Tender - Contractor Bids ({bids.length})
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    This issue is open for contractor bidding. All bids are publicly visible for transparency.
+                  </p>
+                </div>
+
+                <div className="p-6">
+                  {loadingBids ? (
+                    <div className="text-center py-8">
+                      <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-orange-600 border-t-transparent"></div>
+                      <p className="mt-3 text-gray-600">Loading bids...</p>
+                    </div>
+                  ) : bids.length === 0 ? (
+                    <div className="text-center py-12 bg-orange-50 rounded-xl">
+                      <Briefcase className="h-12 w-12 mx-auto text-orange-400 mb-3" />
+                      <p className="text-gray-600 font-semibold">No bids submitted yet</p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {user?.role === 'CONTRACTOR' ? 'Be the first to submit a bid!' : 'Waiting for contractors to submit bids'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Bids sorted by amount (lowest first) */}
+                      {bids
+                        .sort((a, b) => a.bidAmount - b.bidAmount)
+                        .map((bid, index) => (
+                          <div
+                            key={bid._id}
+                            className={`border-2 rounded-xl p-5 transition-all ${
+                              bid.status === 'APPROVED'
+                                ? 'border-green-500 bg-green-50'
+                                : bid.status === 'REJECTED'
+                                ? 'border-red-300 bg-red-50 opacity-60'
+                                : 'border-orange-200 bg-orange-50 hover:border-orange-400'
+                            }`}
+                          >
+                            {/* Bid Header */}
+                            <div className="flex items-start justify-between mb-4">
+                              <div className="flex-1">
+                                <div className="flex items-center mb-2">
+                                  {index === 0 && bid.status === 'PENDING' && (
+                                    <span className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full mr-2">
+                                      LOWEST BID
+                                    </span>
+                                  )}
+                                  {bid.status === 'APPROVED' && (
+                                    <span className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-full mr-2 flex items-center">
+                                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                                      AWARDED
+                                    </span>
+                                  )}
+                                  {bid.status === 'REJECTED' && (
+                                    <span className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full mr-2">
+                                      REJECTED
+                                    </span>
+                                  )}
+                                  <span className="text-sm font-semibold text-gray-700">
+                                    Bid #{index + 1}
+                                  </span>
+                                </div>
+                                <h3 className="text-lg font-bold text-gray-900">
+                                  {bid.contractor?.companyName || bid.contractor?.name}
+                                </h3>
+                                {bid.contractor?.rating && (
+                                  <div className="flex items-center mt-1">
+                                    <span className="text-yellow-500 text-sm">★</span>
+                                    <span className="text-sm font-semibold text-gray-700 ml-1">
+                                      {bid.contractor.rating.toFixed(1)} Rating
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Bid Amount - Prominent Display */}
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500 font-semibold uppercase mb-1">Bid Amount</p>
+                                <p className="text-3xl font-bold text-orange-600">₹{bid.bidAmount.toLocaleString()}</p>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  <Clock className="h-3 w-3 inline mr-1" />
+                                  {bid.estimatedDays} days
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Proposal */}
+                            <div className="bg-white rounded-lg p-4 mb-3">
+                              <div className="flex items-center mb-2">
+                                <FileText className="h-4 w-4 text-orange-600 mr-2" />
+                                <h4 className="text-sm font-bold text-gray-900">Proposal</h4>
+                              </div>
+                              <p className="text-sm text-gray-700 leading-relaxed">{bid.proposal}</p>
+                            </div>
+
+                            {/* Methodology */}
+                            {bid.methodology && (
+                              <div className="bg-blue-50 rounded-lg p-4 mb-3">
+                                <h4 className="text-sm font-bold text-gray-900 mb-2">Methodology</h4>
+                                <p className="text-sm text-gray-700 leading-relaxed">{bid.methodology}</p>
+                              </div>
+                            )}
+
+                            {/* Materials Breakdown */}
+                            {bid.materials && bid.materials.length > 0 && (
+                              <div className="bg-purple-50 rounded-lg p-4 mb-3">
+                                <h4 className="text-sm font-bold text-gray-900 mb-3">Materials Breakdown</h4>
+                                <div className="space-y-2">
+                                  {bid.materials.map((material, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-sm">
+                                      <span className="text-gray-700 font-medium">
+                                        {material.name} ({material.quantity} {material.unit})
+                                      </span>
+                                      <span className="text-gray-900 font-bold">₹{material.cost?.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Bid Metadata */}
+                            <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t">
+                              <span>Submitted: {new Date(bid.createdAt).toLocaleDateString()}</span>
+                              {bid.isPublic === false && (
+                                <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded">Private Bid</span>
+                              )}
+                            </div>
+
+                            {/* Admin Review Notes (if any) */}
+                            {bid.reviewNotes && (
+                              <div className={`mt-4 p-3 rounded-lg ${
+                                bid.status === 'APPROVED' ? 'bg-green-100' : 'bg-red-100'
+                              }`}>
+                                <p className="text-xs font-semibold text-gray-700 mb-1">Admin Review:</p>
+                                <p className="text-sm text-gray-800">{bid.reviewNotes}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Bid Statistics */}
+                  {bids.length > 0 && (
+                    <div className="mt-6 grid grid-cols-3 gap-4 pt-6 border-t">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 font-semibold uppercase mb-1">Total Bids</p>
+                        <p className="text-2xl font-bold text-gray-900">{bids.length}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 font-semibold uppercase mb-1">Lowest Bid</p>
+                        <p className="text-2xl font-bold text-green-600">
+                          ₹{Math.min(...bids.map(b => b.bidAmount)).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 font-semibold uppercase mb-1">Average Bid</p>
+                        <p className="text-2xl font-bold text-blue-600">
+                          ₹{Math.round(bids.reduce((sum, b) => sum + b.bidAmount, 0) / bids.length).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/*       issue.hasUpvoted 
                         ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}

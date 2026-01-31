@@ -157,7 +157,7 @@ const AQIMap = () => {
           flex: 1;
           height: 100%;
           transition: 0.3s;
-          opacity: 0.8;
+          opacity: 1;
           cursor: pointer;
         }
         .filter-seg:hover {
